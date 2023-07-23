@@ -32,25 +32,44 @@ var FONTSET = [FONTSET_SIZE]uint8{
 	0xF0, 0x80, 0xF0, 0x80, 0x80, // F
 }
 
-var OPCODES = map[uint16]interface{}{
-	0x0000: 0,
-	0x00E0: 0,
-	0x00EE: 0,
-	0x1000: 0,
-	0x2000: 0,
-	0x3000: 0,
-	0x4000: 0,
-	0x5000: 0,
-	0x6:    0,
-	0x7:    0,
-	0x8:    0,
-	0x9:    0,
-	0xA:    0,
-	0xB:    0,
-	0xC:    0,
-	0xD:    0,
-	0xE:    0,
-	0xF:    0,
+type OpcodeInstruction = func(e *Emu, operands []uint8)
+
+var OPCODES = map[uint16]OpcodeInstruction{
+	0x0000: (*Emu).nop,
+	0x00E0: (*Emu).cls,
+	0x00EE: (*Emu).ret,
+	// 0x1000: 0,
+	// 0x2000: 0,
+	// 0x3000: 0,
+	// 0x4000: 0,
+	// 0x5000: 0,
+	// 0x6000: 0,
+	// 0x7000: 0,
+	// 0x8000: 0,
+	// 0x8001: 0,
+	// 0x8002: 0,
+	// 0x8003: 0,
+	// 0x8004: 0,
+	// 0x8005: 0,
+	// 0x8006: 0,
+	// 0x8007: 0,
+	// 0x800E: 0,
+	// 0x9000: 0,
+	// 0xA000: 0,
+	// 0xB000: 0,
+	// 0xC000: 0,
+	// 0xD000: 0,
+	// 0xE09E: 0,
+	// 0xE0A1: 0,
+	// 0xF007: 0,
+	// 0xF00A: 0,
+	// 0xF015: 0,
+	// 0xF018: 0,
+	// 0xF01E: 0,
+	// 0xF029: 0,
+	// 0xF033: 0,
+	// 0xF055: 0,
+	// 0xF065: 0,
 }
 
 type Emu struct {
@@ -110,7 +129,7 @@ func (e *Emu) reset() {
 	copy(e.ram[:FONTSET_SIZE], FONTSET[:])
 }
 
-func (e *Emu) tick() {
+func (e *Emu) Tick() {
 	// fetch
 	op := e.fetch()
 	// decode & execute
@@ -148,11 +167,27 @@ func (e *Emu) execute(op uint16) {
 	// digit4 := op & 0xF
 
 	switch {
-	case digit1 == 0x1:
-		fmt.Println("1")
+	case digit1 == 0x0:
+		getHandler(op)(e, []uint8{})
 	default:
 		panic(fmt.Sprintf("opcode unimplemented %x", op))
 	}
+}
+
+func getHandler(op uint16) OpcodeInstruction {
+	if handler, found := OPCODES[op]; found {
+		return handler
+	}
+	panic(fmt.Sprintf("opcode unimplemented %x", op))
+}
+
+func (e *Emu) nop(ops []uint8) {}
+func (e *Emu) cls(ops []uint8) {
+	e.screen = [SCREEN_WIDTH * SCREEN_HEIGHT]bool{}
+}
+func (e *Emu) ret(ops []uint8) {
+	ret_addr := e.pop()
+	e.pc = ret_addr
 }
 
 func main() {
