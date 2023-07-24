@@ -64,18 +64,18 @@ var OPCODES_TABLE = map[uint16]Instruction{
 	0xA000: (*Emu).ldI,
 	0xB000: (*Emu).jmp_0,
 	0xC000: (*Emu).rng,
-	// 0xD000: 0,
-	// 0xE09E: 0,
-	// 0xE0A1: 0,
-	// 0xF007: 0,
-	// 0xF00A: 0,
-	// 0xF015: 0,
-	// 0xF018: 0,
-	// 0xF01E: 0,
-	// 0xF029: 0,
-	// 0xF033: 0,
-	// 0xF055: 0,
-	// 0xF065: 0,
+	0xD000: (*Emu).draw,
+	0xE09E: (*Emu).skp,
+	0xE0A1: (*Emu).sknp,
+	0xF007: (*Emu).ldvdt,
+	0xF00A: (*Emu).ldk,
+	0xF015: (*Emu).lddtv,
+	0xF018: (*Emu).ldstv,
+	0xF01E: (*Emu).addiv,
+	0xF029: (*Emu).ldfv,
+	0xF033: (*Emu).ldbv,
+	0xF055: (*Emu).ldiv,
+	0xF065: (*Emu).ldvi,
 }
 
 type Emu struct {
@@ -385,6 +385,17 @@ func (e *Emu) draw(ops []uint8) {
 		e.v_reg[CARRY_FLAG] = 0x00
 	}
 }
+func (e *Emu) skp(ops []uint8)   {}
+func (e *Emu) sknp(ops []uint8)  {}
+func (e *Emu) ldvdt(ops []uint8) {}
+func (e *Emu) ldk(ops []uint8)   {}
+func (e *Emu) lddtv(ops []uint8) {}
+func (e *Emu) ldstv(ops []uint8) {}
+func (e *Emu) addiv(ops []uint8) {}
+func (e *Emu) ldfv(ops []uint8)  {}
+func (e *Emu) ldbv(ops []uint8)  {}
+func (e *Emu) ldiv(ops []uint8)  {}
+func (e *Emu) ldvi(ops []uint8)  {}
 
 func main() {
 	var emu Emu = NewEmu()
