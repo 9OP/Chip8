@@ -308,7 +308,7 @@ func (e *Emu) sub(ops []uint8) {
 }
 func (e *Emu) shr(ops []uint8) {
 	x, vx := ops[0], e.v_reg[ops[0]]
-	var mask uint8 = 0x01    // 0000 0001
+	var mask uint8 = 0b0000_0001
 	dropped_lsb := vx & mask // dropped bit
 	e.v_reg[CARRY_FLAG] = dropped_lsb
 	e.v_reg[x] >>= 1
@@ -324,7 +324,7 @@ func (e *Emu) subn(ops []uint8) {
 }
 func (e *Emu) shl(ops []uint8) {
 	x, vx := ops[0], e.v_reg[ops[0]]
-	var mask uint8 = 0x80           // 1000 0000
+	var mask uint8 = 0b1000_0000
 	dropped_msb := (vx & mask) >> 7 // dropped bit
 	e.v_reg[CARRY_FLAG] = dropped_msb
 	e.v_reg[x] <<= 1
@@ -360,7 +360,30 @@ func (e *Emu) draw(ops []uint8) {
 		it is outside the coordinates of the display, it wraps around to the opposite side
 		of the screen.
 	*/
-	// x, y, n := e.v_reg[ops[0]], e.v_reg[ops[1]], ops[2]
+	vx, vy, n, I := e.v_reg[ops[0]], e.v_reg[ops[1]], ops[2], e.i_reg
+	sprite := e.ram[I : I+uint16(n)]
+	flipped := false
+
+	for row, pixel_row := range sprite {
+		for pixel_idx := 0; pixel_idx < 8; pixel_idx++ {
+			var mask uint8 = 0b1000_0000 >> pixel_idx // select individual pixel
+			if (pixel_row & mask) != 0x0 {
+				// wraps around the opposite side of the screen
+				x := (vx + uint8(pixel_idx)) % SCREEN_WIDTH
+				y := (vy + uint8(row)) % SCREEN_HEIGHT
+
+				idx := x + SCREEN_WIDTH*y
+				flipped = flipped || e.screen[idx] // erasion cause flip
+				e.screen[idx] = !e.screen[idx]     // XOR pixels
+			}
+		}
+	}
+
+	if flipped {
+		e.v_reg[CARRY_FLAG] = 0x01
+	} else {
+		e.v_reg[CARRY_FLAG] = 0x00
+	}
 }
 
 func main() {
@@ -390,9 +413,13 @@ func main() {
 	// fmt.Printf("%x, %v\n", sum, overflow)
 
 	// shift
-	var val uint8 = 0x70 // 1111 0000
-	fmt.Printf("%x\n", val>>1)
-	fmt.Printf("%x\n", val<<1)
-	var droppedBit = (val & 0x80) >> 7 // 1000 0000
-	fmt.Printf("%x\n", droppedBit)
+	// var val uint8 = 0x70 // 1111 0000
+	// fmt.Printf("%x\n", val>>1)
+	// fmt.Printf("%x\n", val<<1)
+	// var droppedBit = (val & 0x80) >> 7 // 1000 0000
+	// fmt.Printf("%x\n", droppedBit)
+
+	// slice
+	ram := [12]uint8{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}
+	fmt.Printf("%v\n", ram[1:6])
 }
