@@ -39,13 +39,13 @@ var OPCODES = map[uint16]OpcodeInstruction{
 	0x00E0: (*Emu).cls,
 	0x00EE: (*Emu).ret,
 	0x1000: (*Emu).jmp,
-	// 0x2000: 0,
-	// 0x3000: 0,
-	// 0x4000: 0,
-	// 0x5000: 0,
-	// 0x6000: 0,
-	// 0x7000: 0,
-	// 0x8000: 0,
+	0x2000: (*Emu).call,
+	0x3000: (*Emu).nextIf,
+	0x4000: (*Emu).nextIfNot,
+	0x5000: (*Emu).nextIfReg,
+	0x6000: (*Emu).setReg,
+	0x7000: (*Emu).incrReg,
+	0x8000: (*Emu).copyReg,
 	// 0x8001: 0,
 	// 0x8002: 0,
 	// 0x8003: 0,
@@ -105,17 +105,14 @@ func NewEmu() Emu {
 	return newEmu
 }
 
-func (e *Emu) push(val uint16) {
-	e.stack[e.sp] = val
-	e.sp += 1
+func (e *Emu) Tick() {
+	// fetch
+	op := e.fetch()
+	// decode & execute
+	e.execute(op)
 }
 
-func (e *Emu) pop() uint16 {
-	e.sp -= 1
-	return e.stack[e.sp]
-}
-
-func (e *Emu) reset() {
+func (e *Emu) Reset() {
 	e.pc = START_ADDR
 	e.ram = [RAM_SIZE]uint8{}
 	e.screen = [SCREEN_WIDTH * SCREEN_HEIGHT]bool{}
@@ -129,13 +126,14 @@ func (e *Emu) reset() {
 	copy(e.ram[:FONTSET_SIZE], FONTSET[:])
 }
 
-func (e *Emu) Tick() {
-	// fetch
-	op := e.fetch()
-	// decode & execute
-	e.execute(op)
+func (e *Emu) push(val uint16) {
+	e.stack[e.sp] = val
+	e.sp += 1
 }
-
+func (e *Emu) pop() uint16 {
+	e.sp -= 1
+	return e.stack[e.sp]
+}
 func (e *Emu) fetch() uint16 {
 	// opcodes are 2 bytes (including operands)
 	lower_byte := e.ram[e.pc]
@@ -201,6 +199,8 @@ func (e *Emu) execute(opcode uint16) {
 	default:
 		panic(fmt.Sprintf("opcode unimplemented %x", opcode))
 	}
+
+	// e.pc += 1
 }
 
 func getHandler(op uint16) OpcodeInstruction {
@@ -210,7 +210,11 @@ func getHandler(op uint16) OpcodeInstruction {
 	panic(fmt.Sprintf("opcode unimplemented %x", op))
 }
 
-func (e *Emu) nop(ops []uint8) {}
+/* OPCODE INSTRUCTION
+ */
+func (e *Emu) nop(ops []uint8) {
+	e.pc += 1
+}
 func (e *Emu) cls(ops []uint8) {
 	e.screen = [SCREEN_WIDTH * SCREEN_HEIGHT]bool{}
 }
@@ -222,6 +226,47 @@ func (e *Emu) jmp(ops []uint8) {
 	// ex: {0xA,0xB,0xC} -> 0xABC
 	nnn := uint16(ops[0])<<8 | uint16(ops[1])<<4 | uint16(ops[2])
 	e.pc = nnn
+}
+func (e *Emu) call(ops []uint8) {
+	nnn := uint16(ops[0])<<8 | uint16(ops[1])<<4 | uint16(ops[2])
+	e.push(e.pc)
+	e.pc = nnn
+}
+func (e *Emu) nextIf(ops []uint8) {
+	reg := ops[0]
+	nn := ops[1]<<4 | ops[2]
+	if e.v_reg[reg] == nn {
+		e.pc += 2
+	}
+}
+func (e *Emu) nextIfNot(ops []uint8) {
+	reg := ops[0]
+	nn := ops[1]<<4 | ops[2]
+	if e.v_reg[reg] != nn {
+		e.pc += 2
+	}
+}
+func (e *Emu) nextIfReg(ops []uint8) {
+	reg1 := ops[0]
+	reg2 := ops[1]
+	if e.v_reg[reg1] == e.v_reg[reg2] {
+		e.pc += 2
+	}
+}
+func (e *Emu) setReg(ops []uint8) {
+	reg := ops[0]
+	val := ops[1]<<4 | ops[2]
+	e.v_reg[reg] = val
+}
+func (e *Emu) incrReg(ops []uint8) {
+	reg := ops[0]
+	val := ops[1]<<4 | ops[2]
+	e.v_reg[reg] += val
+}
+func (e *Emu) copyReg(ops []uint8) {
+	reg1 := ops[0]
+	reg2 := ops[1]
+	e.v_reg[reg2] = e.v_reg[reg1]
 }
 
 func main() {
