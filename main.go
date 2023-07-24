@@ -37,6 +37,25 @@ var FONTSET = [FONTSET_SIZE]uint8{
 	0xF0, 0x80, 0xF0, 0x80, 0x80, // F
 }
 
+var KEYS = map[string]uint8{
+	"1": 0x1,
+	"2": 0x2,
+	"3": 0x3,
+	"4": 0xC,
+	"q": 0x4,
+	"w": 0x5,
+	"e": 0x6,
+	"r": 0xD,
+	"a": 0x7,
+	"s": 0x8,
+	"d": 0x9,
+	"f": 0xE,
+	"z": 0xA,
+	"x": 0x0,
+	"c": 0xB,
+	"v": 0xF,
+}
+
 type Operands = []uint8
 type Instruction = func(e *Emu, ops Operands)
 
@@ -108,9 +127,23 @@ func NewEmu() Emu {
 	}
 
 	// copy fontset to ram
-	copy(newEmu.ram[:FONTSET_SIZE], FONTSET[:])
+	copy(newEmu.ram[0:FONTSET_SIZE], FONTSET[:])
 
 	return newEmu
+}
+
+func (e *Emu) GetDisplay() [SCREEN_WIDTH * SCREEN_HEIGHT]bool {
+	return e.screen
+}
+
+func (e *Emu) Keypress(idx uint8, pressed bool) {
+	e.keys[idx] = pressed
+}
+
+func (e *Emu) Load(data []uint8) {
+	start := START_ADDR
+	end := START_ADDR + len(data)
+	copy(e.ram[start:end], data)
 }
 
 func (e *Emu) Tick() {
@@ -152,15 +185,13 @@ func (e *Emu) fetch() uint16 {
 	return op
 }
 
-func (e *Emu) tick_timers() {
+func (e *Emu) Tick_timers() {
 	if e.dt > 0 {
 		e.dt -= 1
 	}
-
 	if e.st > 0 {
-		if e.st == 1 {
-			// beep
-		}
+		// if e.st == 1 { // beep
+		// }
 		e.st -= 1
 	}
 }
@@ -347,8 +378,8 @@ func (e *Emu) jmp_0(ops []uint8) {
 func (e *Emu) rng(ops []uint8) {
 	x := ops[0]
 	nn := ops[1]<<4 | ops[2]
-	rand.Seed(time.Now().UnixNano())
-	random := uint8(rand.Uint32() % 256)
+	rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
+	random := uint8(rnd.Uint32() % 256)
 	e.v_reg[x] = random & nn
 }
 func (e *Emu) draw(ops []uint8) {
