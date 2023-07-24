@@ -11,6 +11,7 @@ const (
 	NUM_KEYS      = 16    // #keys
 	START_ADDR    = 0x200 // start address of program
 	FONTSET_SIZE  = 80    // (0-9A-F) 16 * 5 bytes
+	CARRY_FLAG    = 0xF   // last register
 )
 
 var FONTSET = [FONTSET_SIZE]uint8{
@@ -40,20 +41,20 @@ var OPCODES = map[uint16]OpcodeInstruction{
 	0x00EE: (*Emu).ret,
 	0x1000: (*Emu).jmp,
 	0x2000: (*Emu).call,
-	0x3000: (*Emu).nextIf,
+	0x3000: (*Emu).nextIfDirect,
 	0x4000: (*Emu).nextIfNot,
-	0x5000: (*Emu).nextIfReg,
-	0x6000: (*Emu).setReg,
-	0x7000: (*Emu).incrReg,
-	0x8000: (*Emu).copyReg,
-	// 0x8001: 0,
-	// 0x8002: 0,
-	// 0x8003: 0,
-	// 0x8004: 0,
-	// 0x8005: 0,
-	// 0x8006: 0,
-	// 0x8007: 0,
-	// 0x800E: 0,
+	0x5000: (*Emu).nextIf,
+	0x6000: (*Emu).set,
+	0x7000: (*Emu).incrDirect,
+	0x8000: (*Emu).copy,
+	0x8001: (*Emu).or,
+	0x8002: (*Emu).and,
+	0x8003: (*Emu).xor,
+	0x8004: (*Emu).add,
+	0x8005: (*Emu).sub1,
+	0x8006: (*Emu).shr,
+	0x8007: (*Emu).sub2,
+	0x800E: (*Emu).shl,
 	// 0x9000: 0,
 	// 0xA000: 0,
 	// 0xB000: 0,
@@ -232,7 +233,7 @@ func (e *Emu) call(ops []uint8) {
 	e.push(e.pc)
 	e.pc = nnn
 }
-func (e *Emu) nextIf(ops []uint8) {
+func (e *Emu) nextIfDirect(ops []uint8) {
 	reg := ops[0]
 	nn := ops[1]<<4 | ops[2]
 	if e.v_reg[reg] == nn {
@@ -246,27 +247,87 @@ func (e *Emu) nextIfNot(ops []uint8) {
 		e.pc += 2
 	}
 }
-func (e *Emu) nextIfReg(ops []uint8) {
+func (e *Emu) nextIf(ops []uint8) {
 	reg1 := ops[0]
 	reg2 := ops[1]
 	if e.v_reg[reg1] == e.v_reg[reg2] {
 		e.pc += 2
 	}
 }
-func (e *Emu) setReg(ops []uint8) {
+func (e *Emu) set(ops []uint8) {
 	reg := ops[0]
 	val := ops[1]<<4 | ops[2]
 	e.v_reg[reg] = val
 }
-func (e *Emu) incrReg(ops []uint8) {
+func (e *Emu) incrDirect(ops []uint8) {
 	reg := ops[0]
 	val := ops[1]<<4 | ops[2]
 	e.v_reg[reg] += val
 }
-func (e *Emu) copyReg(ops []uint8) {
+func (e *Emu) copy(ops []uint8) {
 	reg1 := ops[0]
 	reg2 := ops[1]
-	e.v_reg[reg2] = e.v_reg[reg1]
+	e.v_reg[reg1] = e.v_reg[reg2]
+}
+func (e *Emu) or(ops []uint8) {
+	reg1 := ops[0]
+	reg2 := ops[1]
+	e.v_reg[reg1] |= e.v_reg[reg2]
+}
+func (e *Emu) and(ops []uint8) {
+	reg1 := ops[0]
+	reg2 := ops[1]
+	e.v_reg[reg1] &= e.v_reg[reg2]
+}
+func (e *Emu) xor(ops []uint8) {
+	reg1 := ops[0]
+	reg2 := ops[1]
+	e.v_reg[reg1] ^= e.v_reg[reg2]
+}
+func (e *Emu) add(ops []uint8) {
+	reg1 := ops[0]
+	reg2 := ops[1]
+	sum := e.v_reg[reg1] + e.v_reg[reg2]
+	// Report carry flag
+	overflow := sum < e.v_reg[reg1] || sum < e.v_reg[reg2]
+	if overflow {
+		e.v_reg[CARRY_FLAG] = 0x01
+	}
+	e.v_reg[reg1] = sum
+}
+func (e *Emu) sub1(ops []uint8) {
+	reg1 := ops[0]
+	reg2 := ops[1]
+	sub := e.v_reg[reg1] - e.v_reg[reg2]
+	underflow := e.v_reg[reg1] < e.v_reg[reg2]
+	if underflow {
+		e.v_reg[CARRY_FLAG] = 0x00
+	}
+	e.v_reg[reg1] = sub
+}
+func (e *Emu) shr(ops []uint8) {
+	reg := ops[0]
+	var mask uint8 = 0x01 // 0000 0001
+	dropped := e.v_reg[reg] & mask
+	e.v_reg[CARRY_FLAG] = dropped
+	e.v_reg[reg] >>= 1
+}
+func (e *Emu) sub2(ops []uint8) {
+	reg1 := ops[1]
+	reg2 := ops[0]
+	sub := e.v_reg[reg1] - e.v_reg[reg2]
+	underflow := e.v_reg[reg1] < e.v_reg[reg2]
+	if underflow {
+		e.v_reg[CARRY_FLAG] = 0x00
+	}
+	e.v_reg[reg1] = sub
+}
+func (e *Emu) shl(ops []uint8) {
+	reg := ops[0]
+	var mask uint8 = 0x80 // 1000 0000
+	dropped := (e.v_reg[reg] & mask) >> 7
+	e.v_reg[CARRY_FLAG] = dropped
+	e.v_reg[reg] <<= 1
 }
 
 func main() {
@@ -284,6 +345,21 @@ func main() {
 	// op &= 0xF000
 	// fmt.Printf("%x, %d, %d", op, 0xFFF, 0x0FFF)
 
-	ops := [3]uint8{0xA, 0xB, 0xCC}
-	fmt.Printf("%x", uint16(ops[0])<<8|uint16(ops[1])<<4|uint16(ops[2]))
+	// ops := [3]uint8{0xA, 0xB, 0xCC}
+	// fmt.Printf("%x", uint16(ops[0])<<8|uint16(ops[1])<<4|uint16(ops[2]))
+
+	// // overflow
+	// var op1 uint8 = 0xAA
+	// var op2 uint8 = 0x56
+
+	// var sum = op1 + op2
+	// var overflow = sum < op1 || sum < op2
+	// fmt.Printf("%x, %v\n", sum, overflow)
+
+	// shift
+	var val uint8 = 0x70 // 1111 0000
+	fmt.Printf("%x\n", val>>1)
+	fmt.Printf("%x\n", val<<1)
+	var droppedBit = (val & 0x80) >> 7 // 1000 0000
+	fmt.Printf("%x\n", droppedBit)
 }
