@@ -40,6 +40,7 @@ var FONTSET = [FONTSET_SIZE]uint8{
 type Operands = []uint8
 type Instruction = func(e *Emu, ops Operands)
 
+// Chip-8 original instruction set
 var OPCODES_TABLE = map[uint16]Instruction{
 	0x0000: (*Emu).nop,
 	0x00E0: (*Emu).cls,
@@ -76,6 +77,7 @@ var OPCODES_TABLE = map[uint16]Instruction{
 	0xF033: (*Emu).ldbv,
 	0xF055: (*Emu).ldiv,
 	0xF065: (*Emu).ldvi,
+	// Extension set
 }
 
 type Emu struct {
@@ -205,7 +207,6 @@ func (e *Emu) execute(opcode uint16) {
 	default:
 		panic(fmt.Sprintf("opcode unimplemented %x", opcode))
 	}
-	// e.pc += 1
 }
 
 func getInstruction(op uint16) Instruction {
@@ -385,52 +386,73 @@ func (e *Emu) draw(ops []uint8) {
 		e.v_reg[CARRY_FLAG] = 0x00
 	}
 }
-func (e *Emu) skp(ops []uint8)   {}
-func (e *Emu) sknp(ops []uint8)  {}
-func (e *Emu) ldvdt(ops []uint8) {}
-func (e *Emu) ldk(ops []uint8)   {}
-func (e *Emu) lddtv(ops []uint8) {}
-func (e *Emu) ldstv(ops []uint8) {}
-func (e *Emu) addiv(ops []uint8) {}
-func (e *Emu) ldfv(ops []uint8)  {}
-func (e *Emu) ldbv(ops []uint8)  {}
-func (e *Emu) ldiv(ops []uint8)  {}
-func (e *Emu) ldvi(ops []uint8)  {}
+func (e *Emu) skp(ops []uint8) {
+	vx := e.v_reg[ops[0]]
+	if e.keys[vx] {
+		e.pc += 2
+	}
+}
+func (e *Emu) sknp(ops []uint8) {
+	vx := e.v_reg[ops[0]]
+	if !e.keys[vx] {
+		e.pc += 2
+	}
+}
+func (e *Emu) ldvdt(ops []uint8) {
+	x := ops[0]
+	e.v_reg[x] = e.dt
+}
+func (e *Emu) ldk(ops []uint8) {
+	// Blocking operation - wait for key press
+	x := ops[0]
+	pressed := false
+	for i, k := range e.keys {
+		if k {
+			pressed = true
+			e.v_reg[x] = uint8(i)
+			break
+		}
+	}
+	if !pressed {
+		e.pc -= 2 // redo
+	}
+}
+func (e *Emu) lddtv(ops []uint8) {
+	vx := e.v_reg[ops[0]]
+	e.dt = vx
+}
+func (e *Emu) ldstv(ops []uint8) {
+	vx := e.v_reg[ops[0]]
+	e.st = vx
+}
+func (e *Emu) addiv(ops []uint8) {
+	vx := e.v_reg[ops[0]]
+	e.i_reg += uint16(vx)
+}
+func (e *Emu) ldfv(ops []uint8) {
+	// font sprites take 5bytes each
+	vx := e.v_reg[ops[0]]
+	addr := (vx * 5) % FONTSET_SIZE
+	e.i_reg = uint16(addr)
+}
+func (e *Emu) ldbv(ops []uint8) {
+	vx, I := e.v_reg[ops[0]], e.i_reg
+	// BCD representation
+	hundreds := uint8(vx / 100)
+	tens := uint8((vx / 10) % 10)
+	ones := uint8(vx % 10)
+	e.ram[I] = hundreds
+	e.ram[I+1] = tens
+	e.ram[I+2] = ones
+}
+func (e *Emu) ldiv(ops []uint8) {
+	copy(e.ram[e.i_reg:e.i_reg+uint16(len(e.v_reg))], e.v_reg[:])
+}
+func (e *Emu) ldvi(ops []uint8) {
+	copy(e.v_reg[:], e.ram[e.i_reg:e.i_reg+uint16(len(e.v_reg))])
+}
 
 func main() {
 	var emu Emu = NewEmu()
 	fmt.Println(emu.pc)
-
-	// op := 0xabcd
-	// v1 := (op >> 12) & 0xF
-	// v2 := (op >> 8) & 0xF
-	// v3 := (op >> 4) & 0xF
-	// v4 := op & 0xF
-	// fmt.Printf("%x-%x-%x-%x", v1, v2, v3, v4)
-
-	// op := 0x1abc
-	// op &= 0xF000
-	// fmt.Printf("%x, %d, %d", op, 0xFFF, 0x0FFF)
-
-	// ops := [3]uint8{0xA, 0xB, 0xCC}
-	// fmt.Printf("%x", uint16(ops[0])<<8|uint16(ops[1])<<4|uint16(ops[2]))
-
-	// // overflow
-	// var op1 uint8 = 0xAA
-	// var op2 uint8 = 0x56
-
-	// var sum = op1 + op2
-	// var overflow = sum < op1 || sum < op2
-	// fmt.Printf("%x, %v\n", sum, overflow)
-
-	// shift
-	// var val uint8 = 0x70 // 1111 0000
-	// fmt.Printf("%x\n", val>>1)
-	// fmt.Printf("%x\n", val<<1)
-	// var droppedBit = (val & 0x80) >> 7 // 1000 0000
-	// fmt.Printf("%x\n", droppedBit)
-
-	// slice
-	ram := [12]uint8{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}
-	fmt.Printf("%v\n", ram[1:6])
 }
