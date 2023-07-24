@@ -1,6 +1,10 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"math/rand"
+	"time"
+)
 
 const (
 	SCREEN_WIDTH  = 64    // px
@@ -33,32 +37,33 @@ var FONTSET = [FONTSET_SIZE]uint8{
 	0xF0, 0x80, 0xF0, 0x80, 0x80, // F
 }
 
-type OpcodeInstruction = func(e *Emu, operands []uint8)
+type Operands = []uint8
+type Instruction = func(e *Emu, ops Operands)
 
-var OPCODES = map[uint16]OpcodeInstruction{
+var OPCODES_TABLE = map[uint16]Instruction{
 	0x0000: (*Emu).nop,
 	0x00E0: (*Emu).cls,
 	0x00EE: (*Emu).ret,
 	0x1000: (*Emu).jmp,
 	0x2000: (*Emu).call,
-	0x3000: (*Emu).nextIfDirect,
-	0x4000: (*Emu).nextIfNot,
-	0x5000: (*Emu).nextIf,
-	0x6000: (*Emu).set,
-	0x7000: (*Emu).incrDirect,
-	0x8000: (*Emu).copy,
+	0x3000: (*Emu).se_d,
+	0x4000: (*Emu).sne_d,
+	0x5000: (*Emu).se,
+	0x6000: (*Emu).ld_d,
+	0x7000: (*Emu).add_d,
+	0x8000: (*Emu).ld,
 	0x8001: (*Emu).or,
 	0x8002: (*Emu).and,
 	0x8003: (*Emu).xor,
 	0x8004: (*Emu).add,
-	0x8005: (*Emu).sub1,
+	0x8005: (*Emu).sub,
 	0x8006: (*Emu).shr,
-	0x8007: (*Emu).sub2,
+	0x8007: (*Emu).subn,
 	0x800E: (*Emu).shl,
-	// 0x9000: 0,
-	// 0xA000: 0,
-	// 0xB000: 0,
-	// 0xC000: 0,
+	0x9000: (*Emu).sne,
+	0xA000: (*Emu).ldI,
+	0xB000: (*Emu).jmp_0,
+	0xC000: (*Emu).rng,
 	// 0xD000: 0,
 	// 0xE09E: 0,
 	// 0xE0A1: 0,
@@ -159,7 +164,7 @@ func (e *Emu) tick_timers() {
 }
 
 func (e *Emu) execute(opcode uint16) {
-	// 0xabcd -> 0xa / 0xb / 0xc / 0xd
+	// 0xABCD -> 0xA, 0xB, 0xC, 0xD
 	digit1 := uint8((opcode >> 12) & 0xF)
 	digit2 := uint8((opcode >> 8) & 0xF)
 	digit3 := uint8((opcode >> 4) & 0xF)
@@ -168,7 +173,7 @@ func (e *Emu) execute(opcode uint16) {
 	switch digit1 {
 	case 0x0:
 		ops := []uint8{}
-		getHandler(opcode)(e, ops)
+		getInstruction(opcode)(e, ops)
 
 	case 0x1:
 	case 0x2:
@@ -182,31 +187,30 @@ func (e *Emu) execute(opcode uint16) {
 	case 0xD:
 		opcode &= 0xF000
 		ops := []uint8{digit2, digit3, digit4}
-		getHandler(opcode)(e, ops)
+		getInstruction(opcode)(e, ops)
 
 	case 0x5:
 	case 0x8:
 	case 0x9:
 		opcode &= 0xF00F
 		ops := []uint8{digit2, digit3}
-		getHandler(opcode)(e, ops)
+		getInstruction(opcode)(e, ops)
 
 	case 0xE:
 	case 0xF:
 		opcode &= 0xF0FF
 		ops := []uint8{digit2}
-		getHandler(opcode)(e, ops)
+		getInstruction(opcode)(e, ops)
 
 	default:
 		panic(fmt.Sprintf("opcode unimplemented %x", opcode))
 	}
-
 	// e.pc += 1
 }
 
-func getHandler(op uint16) OpcodeInstruction {
-	if handler, found := OPCODES[op]; found {
-		return handler
+func getInstruction(op uint16) Instruction {
+	if instruction, found := OPCODES_TABLE[op]; found {
+		return instruction
 	}
 	panic(fmt.Sprintf("opcode unimplemented %x", op))
 }
@@ -233,101 +237,130 @@ func (e *Emu) call(ops []uint8) {
 	e.push(e.pc)
 	e.pc = nnn
 }
-func (e *Emu) nextIfDirect(ops []uint8) {
-	reg := ops[0]
+func (e *Emu) se_d(ops []uint8) {
+	x := ops[0]
 	nn := ops[1]<<4 | ops[2]
-	if e.v_reg[reg] == nn {
+	if e.v_reg[x] == nn {
 		e.pc += 2
 	}
 }
-func (e *Emu) nextIfNot(ops []uint8) {
-	reg := ops[0]
+func (e *Emu) sne_d(ops []uint8) {
+	x := ops[0]
 	nn := ops[1]<<4 | ops[2]
-	if e.v_reg[reg] != nn {
+	if e.v_reg[x] != nn {
 		e.pc += 2
 	}
 }
-func (e *Emu) nextIf(ops []uint8) {
-	reg1 := ops[0]
-	reg2 := ops[1]
-	if e.v_reg[reg1] == e.v_reg[reg2] {
+func (e *Emu) se(ops []uint8) {
+	vx := e.v_reg[ops[0]]
+	vy := e.v_reg[ops[1]]
+	if vx == vy {
 		e.pc += 2
 	}
 }
-func (e *Emu) set(ops []uint8) {
-	reg := ops[0]
-	val := ops[1]<<4 | ops[2]
-	e.v_reg[reg] = val
+func (e *Emu) ld_d(ops []uint8) {
+	x := ops[0]
+	nn := ops[1]<<4 | ops[2]
+	e.v_reg[x] = nn
 }
-func (e *Emu) incrDirect(ops []uint8) {
-	reg := ops[0]
-	val := ops[1]<<4 | ops[2]
-	e.v_reg[reg] += val
+func (e *Emu) add_d(ops []uint8) {
+	x := ops[0]
+	nn := ops[1]<<4 | ops[2]
+	e.v_reg[x] += nn
 }
-func (e *Emu) copy(ops []uint8) {
-	reg1 := ops[0]
-	reg2 := ops[1]
-	e.v_reg[reg1] = e.v_reg[reg2]
+func (e *Emu) ld(ops []uint8) {
+	x := ops[0]
+	vy := e.v_reg[ops[1]]
+	e.v_reg[x] = vy
 }
 func (e *Emu) or(ops []uint8) {
-	reg1 := ops[0]
-	reg2 := ops[1]
-	e.v_reg[reg1] |= e.v_reg[reg2]
+	x := ops[0]
+	vy := e.v_reg[ops[1]]
+	e.v_reg[x] |= vy
 }
 func (e *Emu) and(ops []uint8) {
-	reg1 := ops[0]
-	reg2 := ops[1]
-	e.v_reg[reg1] &= e.v_reg[reg2]
+	x := ops[0]
+	vy := e.v_reg[ops[1]]
+	e.v_reg[x] &= vy
 }
 func (e *Emu) xor(ops []uint8) {
-	reg1 := ops[0]
-	reg2 := ops[1]
-	e.v_reg[reg1] ^= e.v_reg[reg2]
+	x := ops[0]
+	vy := e.v_reg[ops[1]]
+	e.v_reg[x] ^= vy
 }
 func (e *Emu) add(ops []uint8) {
-	reg1 := ops[0]
-	reg2 := ops[1]
-	sum := e.v_reg[reg1] + e.v_reg[reg2]
-	// Report carry flag
-	overflow := sum < e.v_reg[reg1] || sum < e.v_reg[reg2]
-	if overflow {
+	x, vx, vy := ops[0], e.v_reg[ops[0]], e.v_reg[ops[1]]
+	sum := vx + vy
+	// set carry flag on overflow
+	if sum < vx || sum < vy {
 		e.v_reg[CARRY_FLAG] = 0x01
 	}
-	e.v_reg[reg1] = sum
+	e.v_reg[x] = sum
 }
-func (e *Emu) sub1(ops []uint8) {
-	reg1 := ops[0]
-	reg2 := ops[1]
-	sub := e.v_reg[reg1] - e.v_reg[reg2]
-	underflow := e.v_reg[reg1] < e.v_reg[reg2]
-	if underflow {
+func (e *Emu) sub(ops []uint8) {
+	x, vx, vy := ops[0], e.v_reg[ops[0]], e.v_reg[ops[1]]
+	sub := vx - vy
+	// unset carry flag on underflow
+	if vx < vy {
 		e.v_reg[CARRY_FLAG] = 0x00
 	}
-	e.v_reg[reg1] = sub
+	e.v_reg[x] = sub
 }
 func (e *Emu) shr(ops []uint8) {
-	reg := ops[0]
-	var mask uint8 = 0x01 // 0000 0001
-	dropped := e.v_reg[reg] & mask
-	e.v_reg[CARRY_FLAG] = dropped
-	e.v_reg[reg] >>= 1
+	x, vx := ops[0], e.v_reg[ops[0]]
+	var mask uint8 = 0x01    // 0000 0001
+	dropped_lsb := vx & mask // dropped bit
+	e.v_reg[CARRY_FLAG] = dropped_lsb
+	e.v_reg[x] >>= 1
 }
-func (e *Emu) sub2(ops []uint8) {
-	reg1 := ops[1]
-	reg2 := ops[0]
-	sub := e.v_reg[reg1] - e.v_reg[reg2]
-	underflow := e.v_reg[reg1] < e.v_reg[reg2]
-	if underflow {
+func (e *Emu) subn(ops []uint8) {
+	x, vx, vy := ops[0], e.v_reg[ops[0]], e.v_reg[ops[1]]
+	sub := vy - vx
+	// unset carry flag on underflow
+	if vy < vx {
 		e.v_reg[CARRY_FLAG] = 0x00
 	}
-	e.v_reg[reg1] = sub
+	e.v_reg[x] = sub
 }
 func (e *Emu) shl(ops []uint8) {
-	reg := ops[0]
-	var mask uint8 = 0x80 // 1000 0000
-	dropped := (e.v_reg[reg] & mask) >> 7
-	e.v_reg[CARRY_FLAG] = dropped
-	e.v_reg[reg] <<= 1
+	x, vx := ops[0], e.v_reg[ops[0]]
+	var mask uint8 = 0x80           // 1000 0000
+	dropped_msb := (vx & mask) >> 7 // dropped bit
+	e.v_reg[CARRY_FLAG] = dropped_msb
+	e.v_reg[x] <<= 1
+}
+func (e *Emu) sne(ops []uint8) {
+	vx, vy := e.v_reg[ops[0]], e.v_reg[ops[1]]
+	if vx != vy {
+		e.pc += 2
+	}
+}
+func (e *Emu) ldI(ops []uint8) {
+	nnn := uint16(ops[0])<<8 | uint16(ops[1])<<4 | uint16(ops[2])
+	e.i_reg = nnn
+}
+func (e *Emu) jmp_0(ops []uint8) {
+	nnn := uint16(ops[0])<<8 | uint16(ops[1])<<4 | uint16(ops[2])
+	e.pc = uint16(e.v_reg[0x00]) + nnn
+}
+func (e *Emu) rng(ops []uint8) {
+	x := ops[0]
+	nn := ops[1]<<4 | ops[2]
+	rand.Seed(time.Now().UnixNano())
+	random := uint8(rand.Uint32() % 256)
+	e.v_reg[x] = random & nn
+}
+func (e *Emu) draw(ops []uint8) {
+	/*
+		Display n-byte sprite starting at memory location I at (Vx, Vy), set VF = collision.
+		The interpreter reads n bytes from memory, starting at the address stored in I.
+		These bytes are then displayed as sprites on screen at coordinates (Vx, Vy).
+		Sprites are XORed onto the existing screen. If this causes any pixels to be erased,
+		VF is set to 1, otherwise it is set to 0. If the sprite is positioned so part of
+		it is outside the coordinates of the display, it wraps around to the opposite side
+		of the screen.
+	*/
+	// x, y, n := e.v_reg[ops[0]], e.v_reg[ops[1]], ops[2]
 }
 
 func main() {
