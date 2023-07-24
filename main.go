@@ -38,7 +38,7 @@ var OPCODES = map[uint16]OpcodeInstruction{
 	0x0000: (*Emu).nop,
 	0x00E0: (*Emu).cls,
 	0x00EE: (*Emu).ret,
-	// 0x1000: 0,
+	0x1000: (*Emu).jmp,
 	// 0x2000: 0,
 	// 0x3000: 0,
 	// 0x4000: 0,
@@ -159,18 +159,47 @@ func (e *Emu) tick_timers() {
 	}
 }
 
-func (e *Emu) execute(op uint16) {
+func (e *Emu) execute(opcode uint16) {
 	// 0xabcd -> 0xa / 0xb / 0xc / 0xd
-	digit1 := (op >> 12) & 0xF
-	// digit2 := (op >> 8) & 0xF
-	// digit3 := (op >> 4) & 0xF
-	// digit4 := op & 0xF
+	digit1 := uint8((opcode >> 12) & 0xF)
+	digit2 := uint8((opcode >> 8) & 0xF)
+	digit3 := uint8((opcode >> 4) & 0xF)
+	digit4 := uint8(opcode & 0xF)
 
-	switch {
-	case digit1 == 0x0:
-		getHandler(op)(e, []uint8{})
+	switch digit1 {
+	case 0x0:
+		ops := []uint8{}
+		getHandler(opcode)(e, ops)
+
+	case 0x1:
+	case 0x2:
+	case 0x3:
+	case 0x4:
+	case 0x6:
+	case 0x7:
+	case 0xA:
+	case 0xB:
+	case 0xC:
+	case 0xD:
+		opcode &= 0xF000
+		ops := []uint8{digit2, digit3, digit4}
+		getHandler(opcode)(e, ops)
+
+	case 0x5:
+	case 0x8:
+	case 0x9:
+		opcode &= 0xF00F
+		ops := []uint8{digit2, digit3}
+		getHandler(opcode)(e, ops)
+
+	case 0xE:
+	case 0xF:
+		opcode &= 0xF0FF
+		ops := []uint8{digit2}
+		getHandler(opcode)(e, ops)
+
 	default:
-		panic(fmt.Sprintf("opcode unimplemented %x", op))
+		panic(fmt.Sprintf("opcode unimplemented %x", opcode))
 	}
 }
 
@@ -189,16 +218,27 @@ func (e *Emu) ret(ops []uint8) {
 	ret_addr := e.pop()
 	e.pc = ret_addr
 }
+func (e *Emu) jmp(ops []uint8) {
+	// ex: {0xA,0xB,0xC} -> 0xABC
+	nnn := uint16(ops[0])<<8 | uint16(ops[1])<<4 | uint16(ops[2])
+	e.pc = nnn
+}
 
 func main() {
 	var emu Emu = NewEmu()
 	fmt.Println(emu.pc)
 
-	op := 0xabcd
-	v1 := (op >> 12) & 0xF
-	v2 := (op >> 8) & 0xF
-	v3 := (op >> 4) & 0xF
-	v4 := op & 0xF
+	// op := 0xabcd
+	// v1 := (op >> 12) & 0xF
+	// v2 := (op >> 8) & 0xF
+	// v3 := (op >> 4) & 0xF
+	// v4 := op & 0xF
+	// fmt.Printf("%x-%x-%x-%x", v1, v2, v3, v4)
 
-	fmt.Printf("%x-%x-%x-%x", v1, v2, v3, v4)
+	// op := 0x1abc
+	// op &= 0xF000
+	// fmt.Printf("%x, %d, %d", op, 0xFFF, 0x0FFF)
+
+	ops := [3]uint8{0xA, 0xB, 0xCC}
+	fmt.Printf("%x", uint16(ops[0])<<8|uint16(ops[1])<<4|uint16(ops[2]))
 }
