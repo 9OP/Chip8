@@ -392,8 +392,7 @@ func (e *Emu) draw(ops []uint8) {
 				// wraps around the opposite side of the screen
 				x := (vx + uint8(pixel_idx)) % SCREEN_WIDTH
 				y := (vy + uint8(row)) % SCREEN_HEIGHT
-
-				idx := x + SCREEN_WIDTH*y
+				var idx uint16 = uint16(x) + uint16(SCREEN_WIDTH)*uint16(y)
 				flipped = flipped || e.screen[idx] // erasion cause flip
 				e.screen[idx] = !e.screen[idx]     // XOR pixels
 			}
@@ -505,6 +504,10 @@ func (e *EmuWasm) Keypress(this js.Value, args []js.Value) any {
 }
 func (e *EmuWasm) DrawScreen(this js.Value, args []js.Value) any {
 	scale := args[0].Int()
+	// // test
+	// e.emu.ldI([]uint8{0, 0, 0}) // set I=0
+	// e.emu.draw([]uint8{10, 10, 20})
+	// //
 	display := e.emu.GetDisplay()
 
 	doc := js.Global().Get("document")
@@ -513,7 +516,6 @@ func (e *EmuWasm) DrawScreen(this js.Value, args []js.Value) any {
 
 	for i := 0; i < SCREEN_WIDTH*SCREEN_HEIGHT; i++ {
 		if display[i] {
-			// if i%5 == 0 {
 			x := i % SCREEN_WIDTH
 			y := i / SCREEN_WIDTH
 			context.Call("fillRect", x*scale, y*scale, scale, scale)

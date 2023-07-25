@@ -1,10 +1,7 @@
 const loadChip8 = async () => {
   const go = new Go();
   const wasm = await fetch("chip8.wasm");
-  const { instance } = await WebAssembly.instantiateStreaming(
-    wasm,
-    go.importObject
-  );
+  const { instance } = await WebAssembly.instantiateStreaming(wasm, go.importObject);
   await go.run(instance);
 };
 
@@ -55,6 +52,9 @@ function run() {
         const rom = new Uint8Array(buffer);
         EmuReset();
         EmuLoad(rom);
+        // debug
+        // ctx.fillStyle = "white";
+        // EmuDrawScreen(SCALE);
         mainloop();
       };
       fr.readAsArrayBuffer(file);
@@ -69,7 +69,6 @@ function mainloop() {
   for (let i = 0; i < TICKS_PER_FRAME; i++) {
     EmuTick();
   }
-
 
   // chip8.tick_timers();
   // Clear the canvas before drawing
