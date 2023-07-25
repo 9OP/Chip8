@@ -115,7 +115,7 @@ type Emu struct {
 	st     uint8
 }
 
-func NewEmu() Emu {
+func NewEmu() *Emu {
 	newEmu := Emu{
 		pc:     START_ADDR,
 		ram:    [RAM_SIZE]uint8{},
@@ -132,7 +132,7 @@ func NewEmu() Emu {
 	// copy fontset to ram
 	copy(newEmu.ram[0:FONTSET_SIZE], FONTSET[:])
 
-	return newEmu
+	return &newEmu
 }
 
 func (e *Emu) GetDisplay() [SCREEN_WIDTH * SCREEN_HEIGHT]bool {
@@ -152,7 +152,6 @@ func (e *Emu) Load(data []uint8) {
 func (e *Emu) Tick() {
 	// fetch
 	op := e.fetch()
-	fmt.Printf("op: %x\n", op)
 	// decode & execute
 	e.execute(op)
 }
@@ -181,10 +180,9 @@ func (e *Emu) pop() uint16 {
 }
 func (e *Emu) fetch() uint16 {
 	// opcodes are 2 bytes (including operands)
-	lower_byte := e.ram[e.pc]
-	upper_byte := e.ram[e.pc+1]
-	// combine as big endian
-	var op uint16 = uint16(lower_byte)<<8 | uint16(upper_byte)
+	upper_byte := e.ram[e.pc]
+	lower_byte := e.ram[e.pc+1]
+	var op uint16 = uint16(upper_byte)<<8 | uint16(lower_byte)
 	e.pc += 2
 	return op
 }
@@ -212,29 +210,17 @@ func (e *Emu) execute(opcode uint16) {
 		ops := []uint8{}
 		getInstruction(opcode)(e, ops)
 
-	case 0x1:
-	case 0x2:
-	case 0x3:
-	case 0x4:
-	case 0x6:
-	case 0x7:
-	case 0xA:
-	case 0xB:
-	case 0xC:
-	case 0xD:
+	case 0x1, 0x2, 0x3, 0x4, 0x6, 0x7, 0xA, 0xB, 0xC, 0xD:
 		opcode &= 0xF000
 		ops := []uint8{digit2, digit3, digit4}
 		getInstruction(opcode)(e, ops)
 
-	case 0x5:
-	case 0x8:
-	case 0x9:
+	case 0x5, 0x8, 0x9:
 		opcode &= 0xF00F
 		ops := []uint8{digit2, digit3}
 		getInstruction(opcode)(e, ops)
 
-	case 0xE:
-	case 0xF:
+	case 0xE, 0xF:
 		opcode &= 0xF0FF
 		ops := []uint8{digit2}
 		getInstruction(opcode)(e, ops)
@@ -491,7 +477,7 @@ func (e *Emu) ldvi(ops []uint8) {
 */
 
 type EmuWasm struct {
-	emu Emu
+	emu *Emu
 }
 
 func (e *EmuWasm) Tick(this js.Value, args []js.Value) any {
@@ -506,8 +492,6 @@ func (e *EmuWasm) Load(this js.Value, args []js.Value) any {
 	length := args[0].Get("length").Int()
 	rom := make([]byte, length)
 	js.CopyBytesToGo(rom, args[0])
-	// should format each byte to have the right endianess: 108:0x6c -> 0x6C00:27648
-	fmt.Println("rom", rom)
 	e.emu.Load(rom)
 	return nil
 }
@@ -520,7 +504,7 @@ func (e *EmuWasm) Keypress(this js.Value, args []js.Value) any {
 	return nil
 }
 func (e *EmuWasm) DrawScreen(this js.Value, args []js.Value) any {
-	var scale uint8 = uint8(args[0].Int())
+	scale := args[0].Int()
 	display := e.emu.GetDisplay()
 
 	doc := js.Global().Get("document")
@@ -529,8 +513,9 @@ func (e *EmuWasm) DrawScreen(this js.Value, args []js.Value) any {
 
 	for i := 0; i < SCREEN_WIDTH*SCREEN_HEIGHT; i++ {
 		if display[i] {
-			x := uint8(i % SCREEN_WIDTH)
-			y := uint8(i / SCREEN_WIDTH)
+			// if i%5 == 0 {
+			x := i % SCREEN_WIDTH
+			y := i / SCREEN_WIDTH
 			context.Call("fillRect", x*scale, y*scale, scale, scale)
 		}
 	}
