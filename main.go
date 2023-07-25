@@ -152,6 +152,7 @@ func (e *Emu) Load(data []uint8) {
 func (e *Emu) Tick() {
 	// fetch
 	op := e.fetch()
+	fmt.Printf("op: %x\n", op)
 	// decode & execute
 	e.execute(op)
 }
@@ -183,7 +184,7 @@ func (e *Emu) fetch() uint16 {
 	lower_byte := e.ram[e.pc]
 	upper_byte := e.ram[e.pc+1]
 	// combine as big endian
-	var op uint16 = uint16(upper_byte)<<8 | uint16(lower_byte)
+	var op uint16 = uint16(lower_byte)<<8 | uint16(upper_byte)
 	e.pc += 2
 	return op
 }
@@ -501,18 +502,12 @@ func (e *EmuWasm) Reset(this js.Value, args []js.Value) any {
 	e.emu.Reset()
 	return nil
 }
-func (e *EmuWasm) GetDisplay(this js.Value, args []js.Value) any {
-	display := e.emu.GetDisplay()
-	dest := make([]interface{}, len(display))
-	for i, v := range display {
-		dest[i] = v
-	}
-	return dest
-}
 func (e *EmuWasm) Load(this js.Value, args []js.Value) any {
 	length := args[0].Get("length").Int()
 	rom := make([]byte, length)
 	js.CopyBytesToGo(rom, args[0])
+	// should format each byte to have the right endianess: 108:0x6c -> 0x6C00:27648
+	fmt.Println("rom", rom)
 	e.emu.Load(rom)
 	return nil
 }
@@ -524,15 +519,33 @@ func (e *EmuWasm) Keypress(this js.Value, args []js.Value) any {
 	}
 	return nil
 }
+func (e *EmuWasm) DrawScreen(this js.Value, args []js.Value) any {
+	var scale uint8 = uint8(args[0].Int())
+	display := e.emu.GetDisplay()
+
+	doc := js.Global().Get("document")
+	canvas := doc.Call("getElementById", "canvas")
+	context := canvas.Call("getContext", "2d")
+
+	for i := 0; i < SCREEN_WIDTH*SCREEN_HEIGHT; i++ {
+		if display[i] {
+			x := uint8(i % SCREEN_WIDTH)
+			y := uint8(i / SCREEN_WIDTH)
+			context.Call("fillRect", x*scale, y*scale, scale, scale)
+		}
+	}
+
+	return nil
+}
 
 func main() {
 	var emuWasm = EmuWasm{emu: NewEmu()}
 
 	js.Global().Set("EmuTick", js.FuncOf(emuWasm.Tick))
 	js.Global().Set("EmuReset", js.FuncOf(emuWasm.Reset))
-	js.Global().Set("EmuGetDisplay", js.FuncOf(emuWasm.GetDisplay))
 	js.Global().Set("EmuKeypress", js.FuncOf(emuWasm.Keypress))
 	js.Global().Set("EmuLoad", js.FuncOf(emuWasm.Load))
+	js.Global().Set("EmuDrawScreen", js.FuncOf(emuWasm.DrawScreen))
 
 	select {} // wait
 }

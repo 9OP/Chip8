@@ -55,7 +55,7 @@ function run() {
         const rom = new Uint8Array(buffer);
         EmuReset();
         EmuLoad(rom);
-        // mainloop(chip8);
+        mainloop();
       };
       fr.readAsArrayBuffer(file);
     },
@@ -79,7 +79,6 @@ function mainloop() {
   // Set the draw color back to white before we render our frame
   ctx.fillStyle = "white";
 
-  // chip8.draw_screen(SCALE);
   EmuDrawScreen(SCALE);
 
   anim_frame = window.requestAnimationFrame(() => {
