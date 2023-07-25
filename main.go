@@ -1,9 +1,12 @@
+//go:build js && wasm
+// +build js,wasm
+
 package main
 
 import (
 	"fmt"
 	"math/rand"
-	"time"
+	"syscall/js"
 )
 
 const (
@@ -378,8 +381,7 @@ func (e *Emu) jmp_0(ops []uint8) {
 func (e *Emu) rng(ops []uint8) {
 	x := ops[0]
 	nn := ops[1]<<4 | ops[2]
-	rnd := rand.New(rand.NewSource(time.Now().UnixNano()))
-	random := uint8(rnd.Uint32() % 256)
+	random := uint8(rand.Uint32() % 256)
 	e.v_reg[x] = random & nn
 }
 func (e *Emu) draw(ops []uint8) {
@@ -483,7 +485,54 @@ func (e *Emu) ldvi(ops []uint8) {
 	copy(e.v_reg[:], e.ram[e.i_reg:e.i_reg+uint16(len(e.v_reg))])
 }
 
+/*
+	EmuWasm JS bindings
+*/
+
+type EmuWasm struct {
+	emu Emu
+}
+
+func (e *EmuWasm) Tick(this js.Value, args []js.Value) any {
+	e.emu.Tick()
+	return nil
+}
+func (e *EmuWasm) Reset(this js.Value, args []js.Value) any {
+	e.emu.Reset()
+	return nil
+}
+func (e *EmuWasm) GetDisplay(this js.Value, args []js.Value) any {
+	display := e.emu.GetDisplay()
+	dest := make([]interface{}, len(display))
+	for i, v := range display {
+		dest[i] = v
+	}
+	return dest
+}
+func (e *EmuWasm) Load(this js.Value, args []js.Value) any {
+	length := args[0].Get("length").Int()
+	rom := make([]byte, length)
+	js.CopyBytesToGo(rom, args[0])
+	e.emu.Load(rom)
+	return nil
+}
+func (e *EmuWasm) Keypress(this js.Value, args []js.Value) any {
+	var key string = args[0].String()
+	var pressed bool = args[1].Bool()
+	if idx, ok := KEYS[key]; ok {
+		e.emu.Keypress(idx, pressed)
+	}
+	return nil
+}
+
 func main() {
-	var emu Emu = NewEmu()
-	fmt.Println(emu.pc)
+	var emuWasm = EmuWasm{emu: NewEmu()}
+
+	js.Global().Set("EmuTick", js.FuncOf(emuWasm.Tick))
+	js.Global().Set("EmuReset", js.FuncOf(emuWasm.Reset))
+	js.Global().Set("EmuGetDisplay", js.FuncOf(emuWasm.GetDisplay))
+	js.Global().Set("EmuKeypress", js.FuncOf(emuWasm.Keypress))
+	js.Global().Set("EmuLoad", js.FuncOf(emuWasm.Load))
+
+	select {} // wait
 }
