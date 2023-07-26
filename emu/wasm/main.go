@@ -1,12 +1,12 @@
 //go:build js && wasm
 // +build js,wasm
 
-package wasm
+package main
 
 import (
 	"syscall/js"
 
-	"github.com/9op/Chip8/core"
+	"github.com/9op/Chip8/emu/core"
 )
 
 type EmuWasm struct {
