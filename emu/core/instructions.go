@@ -253,14 +253,14 @@ func (e *Emu) draw_x_y_n(ops []uint8) {
 func (e *Emu) skp_x(ops []uint8) {
 	// SKIP KEY PRESS
 	vx := e.v_reg[ops[0]]
-	if e.keys[vx] {
+	if e.keys[vx&0xF] {
 		e.pc += 2
 	}
 }
 func (e *Emu) sknp_x(ops []uint8) {
 	// SKIP KEY RELEASE
 	vx := e.v_reg[ops[0]]
-	if !e.keys[vx] {
+	if !e.keys[vx&0xF] {
 		e.pc += 2
 	}
 }
