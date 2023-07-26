@@ -61,141 +61,162 @@ func getInstruction(op uint16) Instruction {
 	panic(fmt.Sprintf("opcode unimplemented %x", op))
 }
 
-/* OPCODE INSTRUCTION
+/*
+ * OPCODE INSTRUCTIONS
  */
 func (e *Emu) nop(ops []uint8) {
+	// NOP
 	e.pc += 1
 }
 func (e *Emu) cls(ops []uint8) {
+	// CLS
 	e.screen = [SCREEN_WIDTH * SCREEN_HEIGHT]bool{}
 }
 func (e *Emu) ret(ops []uint8) {
+	// RET
 	ret_addr := e.pop()
 	e.pc = ret_addr
 }
-func (e *Emu) jmp(ops []uint8) {
+func (e *Emu) jp_a(ops []uint8) {
+	// JUMP NNN
 	// ex: {0xA,0xB,0xC} -> 0xABC
 	nnn := uint16(ops[0])<<8 | uint16(ops[1])<<4 | uint16(ops[2])
+	nnn &= 0xFFF
 	e.pc = nnn
 }
-func (e *Emu) call(ops []uint8) {
+func (e *Emu) call_a(ops []uint8) {
+	// CALL NNN
 	nnn := uint16(ops[0])<<8 | uint16(ops[1])<<4 | uint16(ops[2])
+	nnn &= 0xFFF
 	e.push(e.pc)
 	e.pc = nnn
 }
-func (e *Emu) se_d(ops []uint8) {
+func (e *Emu) se_x_b(ops []uint8) {
+	// SKIP VX == NN
 	x := ops[0]
 	nn := ops[1]<<4 | ops[2]
 	if e.v_reg[x] == nn {
 		e.pc += 2
 	}
 }
-func (e *Emu) sne_d(ops []uint8) {
+func (e *Emu) sne_x_b(ops []uint8) {
+	// SKIP VX != NN
 	x := ops[0]
 	nn := ops[1]<<4 | ops[2]
 	if e.v_reg[x] != nn {
 		e.pc += 2
 	}
 }
-func (e *Emu) se(ops []uint8) {
+func (e *Emu) se_x_y(ops []uint8) {
+	// SKIP VX == XY
 	vx := e.v_reg[ops[0]]
 	vy := e.v_reg[ops[1]]
 	if vx == vy {
 		e.pc += 2
 	}
 }
-func (e *Emu) ld_d(ops []uint8) {
+func (e *Emu) ld_x_b(ops []uint8) {
+	// LOAD VX == NN
 	x := ops[0]
 	nn := ops[1]<<4 | ops[2]
 	e.v_reg[x] = nn
 }
-func (e *Emu) add_d(ops []uint8) {
+func (e *Emu) add_x_b(ops []uint8) {
+	// ADD VX += NN
 	x := ops[0]
 	nn := ops[1]<<4 | ops[2]
 	e.v_reg[x] += nn
 }
-func (e *Emu) ld(ops []uint8) {
-	x := ops[0]
-	vy := e.v_reg[ops[1]]
-	e.v_reg[x] = vy
+func (e *Emu) ld_x_y(ops []uint8) {
+	// LOAD VX == VY
+	e.v_reg[ops[0]] = e.v_reg[ops[1]]
 }
-func (e *Emu) or(ops []uint8) {
-	x := ops[0]
-	vy := e.v_reg[ops[1]]
-	e.v_reg[x] |= vy
+func (e *Emu) or_x_y(ops []uint8) {
+	// OR VX |= VY
+	e.v_reg[ops[0]] |= e.v_reg[ops[1]]
 }
-func (e *Emu) and(ops []uint8) {
-	x := ops[0]
-	vy := e.v_reg[ops[1]]
-	e.v_reg[x] &= vy
+func (e *Emu) and_x_y(ops []uint8) {
+	// AND VX & VY
+	e.v_reg[ops[0]] &= e.v_reg[ops[1]]
 }
-func (e *Emu) xor(ops []uint8) {
-	x := ops[0]
-	vy := e.v_reg[ops[1]]
-	e.v_reg[x] ^= vy
+func (e *Emu) xor_x_y(ops []uint8) {
+	// XOR VX ^= VY
+	e.v_reg[ops[0]] ^= e.v_reg[ops[1]]
 }
-func (e *Emu) add(ops []uint8) {
-	x, vx, vy := ops[0], e.v_reg[ops[0]], e.v_reg[ops[1]]
+func (e *Emu) add_x_y(ops []uint8) {
+	// ADD VX += VY
+	x, vx, vy := ops[0], uint16(e.v_reg[ops[0]]), uint16(e.v_reg[ops[1]])
 	sum := vx + vy
-	// set carry flag on overflow
-	if sum < vx || sum < vy {
+	if sum > 0xFF {
 		e.v_reg[CARRY_FLAG] = 0x01
 	}
-	e.v_reg[x] = sum
+	e.v_reg[x] = uint8(sum)
 }
-func (e *Emu) sub(ops []uint8) {
+func (e *Emu) sub_x_y(ops []uint8) {
+	// SUB VX -= VY
 	x, vx, vy := ops[0], e.v_reg[ops[0]], e.v_reg[ops[1]]
 	sub := vx - vy
-	// unset carry flag on underflow
-	if vx < vy {
+	if vx > vy {
+		e.v_reg[CARRY_FLAG] = 0x01
+	} else {
 		e.v_reg[CARRY_FLAG] = 0x00
 	}
 	e.v_reg[x] = sub
 }
-func (e *Emu) shr(ops []uint8) {
+func (e *Emu) shr_x(ops []uint8) {
+	// SHIFT RIGHT VX >>= 1
 	x, vx := ops[0], e.v_reg[ops[0]]
 	var mask uint8 = 0b0000_0001
-	dropped_lsb := vx & mask // dropped bit
-	e.v_reg[CARRY_FLAG] = dropped_lsb
+	lsb := vx & mask
 	e.v_reg[x] >>= 1
+	e.v_reg[CARRY_FLAG] = lsb
 }
-func (e *Emu) subn(ops []uint8) {
+func (e *Emu) subn_x_y(ops []uint8) {
+	// SUBN VX = VY - VX
 	x, vx, vy := ops[0], e.v_reg[ops[0]], e.v_reg[ops[1]]
 	sub := vy - vx
-	// unset carry flag on underflow
-	if vy < vx {
+	if vx > vy {
+		e.v_reg[CARRY_FLAG] = 0x01
+	} else {
 		e.v_reg[CARRY_FLAG] = 0x00
 	}
 	e.v_reg[x] = sub
 }
-func (e *Emu) shl(ops []uint8) {
+func (e *Emu) shl_x(ops []uint8) {
+	// SHIFT LEFT VX <<= 1
 	x, vx := ops[0], e.v_reg[ops[0]]
 	var mask uint8 = 0b1000_0000
-	dropped_msb := (vx & mask) >> 7 // dropped bit
-	e.v_reg[CARRY_FLAG] = dropped_msb
+	msb := (vx >> 7) & mask // dropped bit
 	e.v_reg[x] <<= 1
+	e.v_reg[CARRY_FLAG] = msb
 }
-func (e *Emu) sne(ops []uint8) {
+func (e *Emu) sne_x_y(ops []uint8) {
+	// SKIP VX != VY
 	vx, vy := e.v_reg[ops[0]], e.v_reg[ops[1]]
 	if vx != vy {
 		e.pc += 2
 	}
 }
-func (e *Emu) ldI(ops []uint8) {
+func (e *Emu) ld_i_a(ops []uint8) {
+	// LOAD I = NNN
 	nnn := uint16(ops[0])<<8 | uint16(ops[1])<<4 | uint16(ops[2])
+	nnn &= 0xFFF
 	e.i_reg = nnn
 }
-func (e *Emu) jmp_0(ops []uint8) {
+func (e *Emu) jp_0_a(ops []uint8) {
+	// JUMP V0 + NNN
 	nnn := uint16(ops[0])<<8 | uint16(ops[1])<<4 | uint16(ops[2])
+	nnn &= 0xFFF
 	e.pc = uint16(e.v_reg[0x00]) + nnn
 }
-func (e *Emu) rng(ops []uint8) {
+func (e *Emu) rnd_x_b(ops []uint8) {
+	// RND VX = rnd & NN
 	x := ops[0]
 	nn := ops[1]<<4 | ops[2]
 	random := uint8(rand.Uint32() % 256)
 	e.v_reg[x] = random & nn
 }
-func (e *Emu) draw(ops []uint8) {
+func (e *Emu) draw_x_y_n(ops []uint8) {
 	/*
 		Display n-byte sprite starting at memory location I at (Vx, Vy), set VF = collision.
 		The interpreter reads n bytes from memory, starting at the address stored in I.
@@ -229,68 +250,79 @@ func (e *Emu) draw(ops []uint8) {
 		e.v_reg[CARRY_FLAG] = 0x00
 	}
 }
-func (e *Emu) skp(ops []uint8) {
+func (e *Emu) skp_x(ops []uint8) {
+	// SKIP KEY PRESS
 	vx := e.v_reg[ops[0]]
 	if e.keys[vx] {
 		e.pc += 2
 	}
 }
-func (e *Emu) sknp(ops []uint8) {
+func (e *Emu) sknp_x(ops []uint8) {
+	// SKIP KEY RELEASE
 	vx := e.v_reg[ops[0]]
 	if !e.keys[vx] {
 		e.pc += 2
 	}
 }
-func (e *Emu) ldvdt(ops []uint8) {
+func (e *Emu) ld_x_dt(ops []uint8) {
+	// LOAD VX = DT
 	x := ops[0]
 	e.v_reg[x] = e.dt
 }
-func (e *Emu) ldk(ops []uint8) {
-	// Blocking operation - wait for key press
+func (e *Emu) ld_x_k(ops []uint8) {
+	// WAIT KEY
 	x := ops[0]
 	pressed := false
-	for i, k := range e.keys {
-		if k {
-			pressed = true
+	for i, is_pressed := range e.keys {
+		if is_pressed {
 			e.v_reg[x] = uint8(i)
+			pressed = true
 			break
 		}
 	}
 	if !pressed {
-		e.pc -= 2 // redo
+		// Redo opcode
+		e.pc -= 2
 	}
 }
-func (e *Emu) lddtv(ops []uint8) {
+func (e *Emu) ld_dt_x(ops []uint8) {
+	// LOAD DT = VX
 	vx := e.v_reg[ops[0]]
 	e.dt = vx
 }
-func (e *Emu) ldstv(ops []uint8) {
+func (e *Emu) ld_st_x(ops []uint8) {
+	// LOAD ST = VX
 	vx := e.v_reg[ops[0]]
 	e.st = vx
 }
-func (e *Emu) addiv(ops []uint8) {
+func (e *Emu) add_i_x(ops []uint8) {
+	// ADD I += VX
 	vx := e.v_reg[ops[0]]
 	e.i_reg += uint16(vx)
 }
-func (e *Emu) ldfv(ops []uint8) {
-	// font sprites take 5bytes each
-	vx := e.v_reg[ops[0]]
-	addr := (vx * 5) % FONTSET_SIZE
-	e.i_reg = uint16(addr)
+func (e *Emu) ld_i_f(ops []uint8) {
+	// LOAD I = FONT ADDRESS
+	vx := uint16(e.v_reg[ops[0]])
+	addr := (vx * 5) % FONTSET_SIZE // font sprites take 5bytes each
+	e.i_reg = addr
 }
-func (e *Emu) ldbv(ops []uint8) {
+func (e *Emu) ld_bcd(ops []uint8) {
+	// BCD
 	vx, I := e.v_reg[ops[0]], e.i_reg
-	// BCD representation
-	hundreds := uint8(vx / 100)
-	tens := uint8((vx / 10) % 10)
-	ones := uint8(vx % 10)
-	e.ram[I] = hundreds
-	e.ram[I+1] = tens
-	e.ram[I+2] = ones
+	e.ram[I] = uint8(vx / 100)         // hundreds
+	e.ram[I+1] = uint8((vx / 10) % 10) // tens
+	e.ram[I+2] = uint8(vx % 10)        // ones
 }
-func (e *Emu) ldiv(ops []uint8) {
-	copy(e.ram[e.i_reg:e.i_reg+uint16(len(e.v_reg))], e.v_reg[:])
+func (e *Emu) ld_i_x(ops []uint8) {
+	// STORE V0 - VX
+	reg := e.v_reg[:]
+	start := e.i_reg
+	end := e.i_reg + uint16(len(reg))
+	copy(e.ram[start:end], reg)
 }
-func (e *Emu) ldvi(ops []uint8) {
-	copy(e.v_reg[:], e.ram[e.i_reg:e.i_reg+uint16(len(e.v_reg))])
+func (e *Emu) ld_x_i(ops []uint8) {
+	// LOAD V0 - VX
+	start := e.i_reg
+	end := e.i_reg + uint16(len(e.v_reg))
+	copy(e.v_reg[:], e.ram[start:end])
 }
