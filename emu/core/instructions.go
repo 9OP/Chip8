@@ -309,13 +309,13 @@ func (e *Emu) ld_i_f(ops []uint8) {
 func (e *Emu) ld_bcd(ops []uint8) {
 	// BCD
 	vx, I := e.v_reg[ops[0]], e.i_reg
-	e.ram[I] = uint8(vx / 100)         // hundreds
-	e.ram[I+1] = uint8((vx / 10) % 10) // tens
-	e.ram[I+2] = uint8(vx % 10)        // ones
+	e.ram[I] = uint8(vx / 100)          // hundreds
+	e.ram[I+1] = uint8((vx / 10) % 10)  // tens
+	e.ram[I+2] = uint8((vx % 100) % 10) // ones
 }
 func (e *Emu) ld_i_x(ops []uint8) {
 	// STORE V0 - VX
-	reg := e.v_reg[:]
+	reg := e.v_reg[:ops[0]]
 	start := e.i_reg
 	end := e.i_reg + uint16(len(reg))
 	copy(e.ram[start:end], reg)
@@ -323,6 +323,6 @@ func (e *Emu) ld_i_x(ops []uint8) {
 func (e *Emu) ld_x_i(ops []uint8) {
 	// LOAD V0 - VX
 	start := e.i_reg
-	end := e.i_reg + uint16(len(e.v_reg))
-	copy(e.v_reg[:], e.ram[start:end])
+	end := e.i_reg + uint16(ops[0])
+	copy(e.v_reg[:ops[0]], e.ram[start:end])
 }
